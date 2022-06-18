@@ -209,7 +209,7 @@ class Quiz(StateMachine):
         return Response(
             'Вот!!!',
             cards=[
-                {'type': 'BigImage', 'image_id':  '457239018'},
+                {'type': 'BigImage', 'image_id':  457239018},
             ],
         )
 
