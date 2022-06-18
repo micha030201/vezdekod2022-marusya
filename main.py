@@ -19,7 +19,7 @@ class Request(BaseModel):
     command: str
     original_utterance: str
     type: str
-    payload: Dict[Any, Any]
+    #payload: Dict[Any, Any]
     nlu: Nlu
 
 
