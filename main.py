@@ -149,7 +149,7 @@ class Quiz(StateMachine):
     @StateMachine.input('начать')
     def start(self):
         self.state = 0
-        return ('Если Вы хотите завершить выйти из опроса до окончания,'
+        return ('Если Вы хотите выйти из опроса до окончания,'
                 ' напишите "конец". Первый вопрос: что такое {middleware}{мидл вэйр}??'), [
             'сорт яблок',
             'линия в доте',
@@ -232,7 +232,7 @@ _quiz_data = [
     (
         'бот',
         'Маруся',
-        '^какой^ читкод в {GTA Vice City}{гэ тэ а вайс сити} позволяет ездить по воде',
+        '^какой^ читкод в {GTA Vice City}{гэ тэ ^а^ вайс сити} позволяет ездить по воде',
         [
             'HESOYAM',
             'ASPIRINE',
@@ -262,9 +262,12 @@ for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
 class Greeter(StateMachine):
     similar = {
         'опрос': ['тест'],
-        'вездекод': ['вездеход', 'везде', 'кот']
+        'вездекод': ['вездеход', 'бездикод', 'везде', 'кот'],
+        'squad': ['сквад', 'scott']
     }
 
+    @StateMachine.input(['совсквот', 'вездеход'])
+    @StateMachine.input(['совсквот', 'везде', 'код'])
     @StateMachine.input(['soft', 'squad', 'вездеход'])
     @StateMachine.input(['soft', 'squad', 'везде', 'кот'])
     def greet_good(self):
@@ -278,6 +281,11 @@ class Greeter(StateMachine):
         return quiz.start()
 
     @StateMachine.input()
+    @StateMachine.need_state('help_seen')
+    def greet_bad(self):
+        return 'Фу, уходи.'
+
+    @StateMachine.input()
     def greet(self):
         self.state = 'help_seen'
         return (
@@ -285,11 +293,6 @@ class Greeter(StateMachine):
             ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
             ' Или напиши "опрос" чтобы пройти опрос'
         )
-
-    @StateMachine.input()
-    @StateMachine.need_state('help_seen')
-    def greet_bad(self):
-        return 'Фу, уходи.'
 
 
 statemachines = defaultdict(Greeter)
