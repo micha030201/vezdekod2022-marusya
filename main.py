@@ -29,9 +29,10 @@ class Request(BaseModel):
 class Session(BaseModel):
     session_id: str
     user_id: str
-    skill_id: str
-    new: bool
     message_id: int
+    skill_id: str
+    #auth_token: str
+    #new: bool
 
 
 class Item(BaseModel):
@@ -44,33 +45,32 @@ class Item(BaseModel):
 ###
 
 class Response:
-    def __init__(self, text, tts, buttons=[], image=None):
+    def __init__(self, text, tts=None, buttons=[], cards={}):
         self.text = text
-        self.tts = to_tts(tts)
+        self.tts = to_tts(tts or text)
         self.buttons = buttons
-        self.image = image
+        self.cards = cards
 
     def json(self):
         ret = {
             'text': self.text,
             'tts': self.tts,
-            'buttons': [{'title': b} for b in self.buttons],
-            'end_session': False,
+            'end_session': False
         }
-        if self.image is not None:
-            ret['card'] = {
-                'type': 'BigImage',
-                'image_id': self.image
-            }
+        if self.buttons:
+            ret['buttons'] = [{'title': b} for b in self.buttons]
+        if self.cards:
+            ret['commands'] = self.cards
         return ret
 
 
 def to_tts(s):
-    return re.sub('{.+?}{(.+?)}', r'\1', s)
+    return re.sub('{.*?}{(.*?)}', r'\1', s.replace('`', ''))
 
 
 class EndSession(Exception):
-    pass
+    def __init__(self, resp):
+        self.resp = resp
 
 
 def is_similar(cls, a, b):
@@ -132,7 +132,7 @@ class StateMachine:
                 return self._inhabited_by.parse(request)
             except EndSession as e:
                 self._inhabited_by = None
-                return str(e)
+                return e.resp
         logger.info(f'dispatching request {request}')
         for name, method in type(self).__dict__.items():
             if hasattr(method, '_matches'):
@@ -177,7 +177,15 @@ class Quiz(StateMachine):
     def start(self):
         self.state = 0
         return ('Если Вы хотите выйти из опроса до окончания,'
-                ' напишите "конец". Первый вопрос: что такое {middleware}{мидл вэйр}??'), [
+                ' напишите "конец". \n\nДля ссылки на приложение{}{,} напишите "^ссылка^".'
+                ' Для картинки{}{,} напишите "^картинка^". Если либо ссылка, либо'
+                ' картинка не работают, я предлагаю ^ува`жаемому^ жюри посмотреть'
+                ' на возвращаемый {JSON}{джей ^сон^} и убедиться, что он'
+                ' полностью соответствует документации и ^примерам^, а значит'
+                ' баг либо в документации, либо в приложении. Готов обсудить'
+                ' этот вопрос лично{}{,} и буду рад, если вы сможете убедить меня'
+                ' в обратном. \n\n'
+                'Первый вопрос: что такое {middleware}{мидл вэйр}??'), [
             'сорт яблок',
             'линия в доте',
             'промежуточная функция между запросом и ответом'
@@ -187,12 +195,32 @@ class Quiz(StateMachine):
     def end(self):
         raise EndSession('ну пока')
 
+    @StateMachine.input('ссылка')
+    def link(self):
+        return Response(
+            'Вот!!!',
+            cards=[
+                {'type': 'MiniApp', 'url':  'https://vk.com/app7543093'},
+            ],
+        )
+
+    @StateMachine.input('картинка')
+    def picture(self):
+        return Response(
+            'Вот!!!',
+            cards=[
+                {'type': 'BigImage', 'image_id':  '457239018'},
+            ],
+        )
+
     @StateMachine.input('SEAWAYS')
     @StateMachine.need_state(7)
     def correct(self):
         self.recs.append(rec)
-        raise EndSession('Правильно!! Опрос закончен. Рекомендуем'
-                         f' Вам категорию {random.choice(self.recs)}.')
+        raise EndSession(Response(
+            'Правильно!! Опрос закончен. Рекомендуем'
+            f' Вам категорию {random.choice(self.recs)}.',
+        ))
 
     @StateMachine.input()
     @StateMachine.need_state(7)
@@ -310,7 +338,7 @@ class Greeter(StateMachine):
         return Response(
             text='Привет вездекодерам!',
             tts='Привет вездек+одерам! <speaker audio=marusia-sounds/game-powerup-1>',
-            image=457239017
+            cards=[{'type': 'BigImage', 'image_id': 457239017}]
         )
 
     @StateMachine.input(['начать', 'опрос'])
@@ -335,7 +363,7 @@ class Greeter(StateMachine):
             tts='Привет!! Мы команда SOFT SQUAD!!'
                 ' <speaker audio=marusia-sounds/things-sword-1> '
                 ' <speaker audio=marusia-sounds/things-gun-1> '
-                ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
+                ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!'
                 ' Или напиши "опрос" чтобы пройти опрос',
         )
 
@@ -350,6 +378,7 @@ app = FastAPI()
 async def validation_exception_handler(request, exc):
     logger.error(str(exc))
     return PlainTextResponse('', status_code=400)
+
 
 @app.post('/marusya')
 async def read_root(req: Item):
