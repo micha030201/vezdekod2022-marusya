@@ -1,3 +1,4 @@
+import re
 import random
 import logging
 from typing import Dict, Any, List
@@ -41,6 +42,32 @@ class Item(BaseModel):
 
 
 ###
+
+class Response:
+    def __init__(self, text, tts, buttons=[], image=None):
+        self.text = text
+        self.tts = to_tts(tts)
+        self.buttons = buttons
+        self.image = image
+
+    def json(self):
+        ret = {
+            'text': self.text,
+            'tts': self.tts,
+            'buttons': [{'title': b} for b in self.buttons],
+            'end_session': False,
+        }
+        if self.image is not None:
+            ret['card'] = {
+                'type': 'BigImage',
+                'image_id': self.image
+            }
+        return ret
+
+
+def to_tts(s):
+    return re.sub('{.+?}{(.+?)}', r'\1', s)
+
 
 class EndSession(Exception):
     pass
@@ -214,7 +241,7 @@ _quiz_data = [
     (
         'какой-то атрибут объекта',
         'Анализ данных',
-        'что такое седловая точка',
+        'что такое седловая ^точка^',
         [
             'ну типа садиться на неё',
             'не знаю',
@@ -246,7 +273,11 @@ for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
     def correct(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
         self.recs.append(rec)
         self.state = i + 1
-        return f'Правильно!! Следующий вопрос: {next_question}??', next_options
+        return Response(
+            text=f'Правильно!! Следующий вопрос: {next_question}??',
+            tts=f'Правильно!! <speaker audio=marusia-sounds/game-win-1> Следующий вопрос: {to_tts(next_question)}??',
+            buttons=next_options
+        )
 
     setattr(Quiz, f'correct{i}', correct)
 
@@ -254,15 +285,20 @@ for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
     @StateMachine.need_state(i)
     def incorrect(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
         self.state = i + 1
-        return f'А вот и нет. Следующий вопрос: {next_question}??', next_options
+        return Response(
+            text=f'А вот и нет. Следующий вопрос: {next_question}??',
+            tts=f'А вот и нет. <speaker audio=marusia-sounds/game-loss-2> Следующий вопрос: {to_tts(next_question)}??',
+            buttons=next_options
+        )
 
     setattr(Quiz, f'incorrect{i}', incorrect)
 
 
 class Greeter(StateMachine):
     similar = {
-        'опрос': ['тест'],
-        'вездекод': ['вездеход', 'бездикод', 'везде', 'кот'],
+        'опрос': ['тест', 'вопрос'],
+        'вездекод': ['вездеход', 'бездикод'],
+        'код': ['кот'],
         'squad': ['сквад', 'scott']
     }
 
@@ -271,7 +307,11 @@ class Greeter(StateMachine):
     @StateMachine.input(['soft', 'squad', 'вездеход'])
     @StateMachine.input(['soft', 'squad', 'везде', 'кот'])
     def greet_good(self):
-        return 'Привет вездекодерам!'
+        return Response(
+            text='Привет вездекодерам!',
+            tts='Привет вездек+одерам! <speaker audio=marusia-sounds/game-powerup-1>',
+            image=457239017
+        )
 
     @StateMachine.input(['начать', 'опрос'])
     @StateMachine.input({'опрос'})
@@ -288,10 +328,15 @@ class Greeter(StateMachine):
     @StateMachine.input()
     def greet(self):
         self.state = 'help_seen'
-        return (
-            'Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
-            ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
-            ' Или напиши "опрос" чтобы пройти опрос'
+        return Response(
+            text='Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
+                 ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
+                 ' Или напиши "опрос" чтобы пройти опрос',
+            tts='Привет!! Мы команда SOFT SQUAD!!'
+                ' <speaker audio=marusia-sounds/things-sword-1> '
+                ' <speaker audio=marusia-sounds/things-gun-1> '
+                ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
+                ' Или напиши "опрос" чтобы пройти опрос',
         )
 
 
@@ -310,19 +355,23 @@ async def validation_exception_handler(request, exc):
 async def read_root(req: Item):
     resp = statemachines[req.session.session_id].parse(req.request)
 
-    if isinstance(resp, str):
-        text = resp
-        buttons = []
+    if isinstance(resp, Response):
+        resp = resp.json()
+    elif isinstance(resp, str):
+        resp = {
+            'text': resp,
+            'end_session': False,
+        }
     else:
         text, buttons = resp
-        buttons = [{'title': b} for b in buttons]
+        resp = {
+            'text': text,
+            'buttons': [{'title': b} for b in buttons],
+            'end_session': False,
+        }
 
     return {
-        'response': {
-            'text': text,
-            'buttons': buttons,
-            'end_session': False
-        },
+        'response': resp,
         'session': req.session,
         'version': req.version,
     }
