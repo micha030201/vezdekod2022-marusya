@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, List
+from collections import defaultdict
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -40,6 +41,10 @@ class Item(BaseModel):
 
 ###
 
+class EndSession(Exception):
+    pass
+
+
 def is_similar(cls, a, b):
     def collate(s):
         return cls._collate.get(s, s)
@@ -48,11 +53,15 @@ def is_similar(cls, a, b):
 
 class StateMachine:
     _collate = {}
+    _inhabited_by = None
 
-    @classmethod
-    def similar(cls, best, good):
-        for alias in good:
-            cls._collate[alias] = best
+    similar = {}
+
+    def __init_subclass__(cls, /, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for best, good in cls.similar.items():
+            for alias in good:
+                cls._collate[alias] = best
 
     def input(match_spec=None):
         def matches(cls, request: Request):
@@ -89,6 +98,12 @@ class StateMachine:
         return decorator
 
     def parse(self, request: Request):
+        if self._inhabited_by is not None:
+            try:
+                return self._inhabited_by.parse(request)
+            except EndSession as e:
+                self._inhabited_by = None
+                return str(e)
         for name, method in type(self).__dict__.items():
             if (
                     hasattr(method, '_matches')
@@ -96,21 +111,49 @@ class StateMachine:
                         matches(type(self), request)
                         for matches in method._matches)
                     and ((not hasattr(method, '_need_state'))
-                        or self.state in method._need_state)):
+                         or self.state in method._need_state)):
                 return method(self)
+        return 'Команда не распознана'
+
+    def inhabit(self, state_machine):
+        assert self._inhabited_by is None
+        self._inhabited_by = state_machine
 
     def __init__(self):
         self.state = None
 
 
+class Quiz(StateMachine):
+    @StateMachine.input('начать')
+    def start(self):
+        return 'Первый вопрос: sefadfn', ['sfbgsfb', 'sthsdgn']
+
+    @StateMachine.input('конец')
+    def end(self):
+        raise EndSession('ну пока')
+
+
 class Greeter(StateMachine):
+    similar = {
+        'опрос': ['тест']
+    }
+
     @StateMachine.input(['soft', 'squad', 'вездеход'])
     def greet_good(self):
         return 'Привет вездекодерам!'
 
+    @StateMachine.input({'опрос'})
+    def start_quiz(self):
+        quiz = Quiz()
+        self.inhabit(quiz)
+        return quiz.start()
+
     @StateMachine.input()
     def greet_bad(self):
         return 'Фу, уходи.'
+
+
+statemachines = defaultdict(Greeter)
 
 
 app = FastAPI()
@@ -121,15 +164,21 @@ async def validation_exception_handler(request, exc):
     logger.error(str(exc))
     return PlainTextResponse('', status_code=400)
 
-
 @app.post('/marusya')
 async def read_root(req: Item):
-    sm = Greeter()
-    resp = sm.parse(req.request)
+    resp = statemachines[req.session.session_id].parse(req.request)
+
+    if isinstance(resp, str):
+        text = resp
+        buttons = []
+    else:
+        text, buttons = resp
+        buttons = [{'title': b} for b in buttons]
 
     return {
         'response': {
-            'text': resp,
+            'text': text,
+            'buttons': buttons,
             'end_session': False
         },
         'session': req.session,
