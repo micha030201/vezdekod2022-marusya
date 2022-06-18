@@ -1,14 +1,14 @@
-from typing import Union
+from typing import Union, Dict, Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 
 class Item(BaseModel):
-    meta: str
-    request: str
-    session: str
-    verson: str
+    meta: Dict[Any, Any]
+    request: Dict[Any, Any]
+    session: Dict[Any, Any]
+    version: str
 
 
 app = FastAPI()
@@ -18,7 +18,8 @@ app = FastAPI()
 async def read_root(req: Item):
     return {
         'response': {
-            'text': 'sdfhsfjsrgm'
+            'text': 'sdfhsfjsrgm',
+            'end_session': False
         },
         'session': req.session,
         'version': req.version,
