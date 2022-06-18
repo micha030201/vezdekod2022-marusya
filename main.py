@@ -139,13 +139,18 @@ class StateMachine:
 
 
 class Quiz(StateMachine):
+    similar = {
+        'конец': ['закончить', 'завершить', 'пока']
+    }
+
     def __init__(self):
         self.recs = ['Дизайн']
 
     @StateMachine.input('начать')
     def start(self):
         self.state = 0
-        return 'Первый вопрос: что такое middleware??', [
+        return ('Если Вы хотите завершить выйти из опроса до окончания,'
+                ' напишите "конец". Первый вопрос: что такое {middleware}{мидл вэйр}??'), [
             'сорт яблок',
             'линия в доте',
             'промежуточная функция между запросом и ответом'
@@ -159,13 +164,13 @@ class Quiz(StateMachine):
     @StateMachine.need_state(7)
     def correct(self):
         self.recs.append(rec)
-        raise EndSession('Правильно!! По результатам опроса рекомендуем'
+        raise EndSession('Правильно!! Опрос закончен. Рекомендуем'
                          f' Вам категорию {random.choice(self.recs)}.')
 
     @StateMachine.input()
     @StateMachine.need_state(7)
     def incorrect(self):
-        raise EndSession('А вот и нет. По результатам опроса рекомендуем'
+        raise EndSession('А вот и нет. Опрос закончен. Рекомендуем'
                          f' Вам категорию {random.choice(self.recs)}.')
 
 
@@ -182,7 +187,7 @@ _quiz_data = [
     (
         'библиотека для компьютерного зрения',
         'Компьютерное зрение',
-        'что такое CORS',
+        'что такое {CORS}{корс}',
         [
             'курс типа как в универе',
             'cars может',
@@ -227,7 +232,7 @@ _quiz_data = [
     (
         'бот',
         'Маруся',
-        'какой читкод в GTA Vice City позволяет ездить по воде',
+        '^какой^ читкод в {GTA Vice City}{гэ тэ а вайс сити} позволяет ездить по воде',
         [
             'HESOYAM',
             'ASPIRINE',
@@ -265,6 +270,7 @@ class Greeter(StateMachine):
     def greet_good(self):
         return 'Привет вездекодерам!'
 
+    @StateMachine.input(['начать', 'опрос'])
     @StateMachine.input({'опрос'})
     def start_quiz(self):
         quiz = Quiz()
@@ -272,6 +278,16 @@ class Greeter(StateMachine):
         return quiz.start()
 
     @StateMachine.input()
+    def greet(self):
+        self.state = 'help_seen'
+        return (
+            'Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
+            ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
+            ' Или напиши "опрос" чтобы пройти опрос'
+        )
+
+    @StateMachine.input()
+    @StateMachine.need_state('help_seen')
     def greet_bad(self):
         return 'Фу, уходи.'
 
