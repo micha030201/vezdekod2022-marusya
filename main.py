@@ -1,3 +1,4 @@
+import random
 import logging
 from typing import Dict, Any, List
 from collections import defaultdict
@@ -65,6 +66,7 @@ class StateMachine:
 
     def input(match_spec=None):
         def matches(cls, request: Request):
+            #print(match_spec)
             if match_spec is None:
                 return True
             elif isinstance(match_spec, list):
@@ -104,7 +106,20 @@ class StateMachine:
             except EndSession as e:
                 self._inhabited_by = None
                 return str(e)
+        logger.info(f'dispatching request {request}')
         for name, method in type(self).__dict__.items():
+            if hasattr(method, '_matches'):
+                logger.info(f'testing method {name}')
+                if any(matches(type(self), request)
+                       for matches in method._matches):
+                    logger.info('input matches')
+                    if ((not hasattr(method, '_need_state'))
+                            or self.state in method._need_state):
+                        logger.info('state correct. matched.')
+                    else:
+                        logger.info('state incorrect')
+                else:
+                    logger.info("input doesn't match")
             if (
                     hasattr(method, '_matches')
                     and any(
@@ -124,21 +139,129 @@ class StateMachine:
 
 
 class Quiz(StateMachine):
+    def __init__(self):
+        self.recs = ['Дизайн']
+
     @StateMachine.input('начать')
     def start(self):
-        return 'Первый вопрос: sefadfn', ['sfbgsfb', 'sthsdgn']
+        self.state = 0
+        return 'Первый вопрос: что такое middleware??', [
+            'сорт яблок',
+            'линия в доте',
+            'промежуточная функция между запросом и ответом'
+        ]
 
     @StateMachine.input('конец')
     def end(self):
         raise EndSession('ну пока')
 
+    @StateMachine.input('SEAWAYS')
+    @StateMachine.need_state(7)
+    def correct(self):
+        self.recs.append(rec)
+        raise EndSession('Правильно!! По результатам опроса рекомендуем'
+                         f' Вам категорию {random.choice(self.recs)}.')
+
+    @StateMachine.input()
+    @StateMachine.need_state(7)
+    def incorrect(self):
+        raise EndSession('А вот и нет. По результатам опроса рекомендуем'
+                         f' Вам категорию {random.choice(self.recs)}.')
+
+
+_quiz_data = [
+    (
+        'промежуточная функция между запросом и ответом',
+        'Веб-разработка, особенно бэкэнд',
+        'что такое cv2',
+        [
+            'резюме второй версии',
+            'фреймворк для разработки игр',
+            'библиотека для компьютерного зрения'
+        ]),
+    (
+        'библиотека для компьютерного зрения',
+        'Компьютерное зрение',
+        'что такое CORS',
+        [
+            'курс типа как в универе',
+            'cars может',
+            'Cross-Origin Resource Sharing'
+        ]),
+    (
+        'Cross-Origin Resource Sharing',
+        'Web',
+        'что такое android',
+        [
+            'роботы такие типа',
+            'iphone',
+            'операционная система',
+        ]),
+    (
+        'операционная система',
+        'Мобильная разработка',
+        'что такое feature',
+        [
+            'ну типа не баг а фича',
+            'всё-таки баг',
+            'какой-то атрибут объекта',
+        ]),
+    (
+        'какой-то атрибут объекта',
+        'Анализ данных',
+        'что такое седловая точка',
+        [
+            'ну типа садиться на неё',
+            'не знаю',
+            'станционарная точка но не экстремум',
+        ]),
+    (
+        'станционарная точка но не экстремум',
+        'Оптимизация',
+        'кто такая Маруся',
+        [
+            'моя еот',
+            'машина такая',
+            'бот',
+        ]),
+    (
+        'бот',
+        'Маруся',
+        'какой читкод в GTA Vice City позволяет ездить по воде',
+        [
+            'HESOYAM',
+            'ASPIRINE',
+            'SEAWAYS'
+        ])
+]
+
+for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
+    @StateMachine.input(answer)
+    @StateMachine.need_state(i)
+    def correct(self, i=i, next_question=next_question, next_options=next_options):
+        self.recs.append(rec)
+        self.state = i + 1
+        return f'Правильно!! Следующий вопрос: {next_question}??', next_options
+
+    setattr(Quiz, f'correct{i}', correct)
+
+    @StateMachine.input()
+    @StateMachine.need_state(i)
+    def incorrect(self, i=i, next_question=next_question, next_options=next_options):
+        self.state = i + 1
+        return f'А вот и нет. Следующий вопрос: {next_question}??', next_options
+
+    setattr(Quiz, f'incorrect{i}', incorrect)
+
 
 class Greeter(StateMachine):
     similar = {
-        'опрос': ['тест']
+        'опрос': ['тест'],
+        'вездекод': ['вездеход', 'везде', 'кот']
     }
 
     @StateMachine.input(['soft', 'squad', 'вездеход'])
+    @StateMachine.input(['soft', 'squad', 'везде', 'кот'])
     def greet_good(self):
         return 'Привет вездекодерам!'
 
