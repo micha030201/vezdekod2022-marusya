@@ -42,7 +42,7 @@ async def validation_exception_handler(request, exc):
 @app.post('/marusya')
 async def read_root(req: Item):
     tokens = req.request.nlu.tokens
-    if 'soft squad' in req.request.command and 'вездекод' in tokens:
+    if 'soft squad' in req.request.command and 'вездеход' in tokens:
         resp = 'Привет вездекодерам!'
     else:
         resp = 'Фу, уходи.'
