@@ -213,10 +213,10 @@ _quiz_data = [
         [
             'ну типа садиться на неё',
             'не знаю',
-            'станционарная точка но не экстремум',
+            'стационарная точка но не экстремум',
         ]),
     (
-        'станционарная точка но не экстремум',
+        'стационарная точка но не экстремум',
         'Оптимизация',
         'кто такая Маруся',
         [
@@ -238,7 +238,7 @@ _quiz_data = [
 for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
     @StateMachine.input(answer)
     @StateMachine.need_state(i)
-    def correct(self, i=i, next_question=next_question, next_options=next_options):
+    def correct(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
         self.recs.append(rec)
         self.state = i + 1
         return f'Правильно!! Следующий вопрос: {next_question}??', next_options
@@ -247,7 +247,7 @@ for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
 
     @StateMachine.input()
     @StateMachine.need_state(i)
-    def incorrect(self, i=i, next_question=next_question, next_options=next_options):
+    def incorrect(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
         self.state = i + 1
         return f'А вот и нет. Следующий вопрос: {next_question}??', next_options
 
