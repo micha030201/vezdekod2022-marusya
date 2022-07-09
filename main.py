@@ -44,6 +44,16 @@ class Item(BaseModel):
 
 ###
 
+def countable(n, one, few, many):
+    if n % 10 == 1:
+        return f'{n} {one}'
+    if n % 10 in {2, 3, 4}:
+        return f'{n} {few}'
+    return f'{n} {many}'
+
+
+###
+
 class Response:
     def __init__(self, text, tts=None, buttons=[], cards={}):
         self.text = text
@@ -65,7 +75,7 @@ class Response:
 
 
 def to_tts(s):
-    return re.sub('{.*?}{(.*?)}', r'\1', s.replace('`', ''))
+    return re.sub('{.*?}{(.*?)}', r'\1', s)
 
 
 class EndSession(Exception):
@@ -165,6 +175,8 @@ class StateMachine:
     def __init__(self):
         self.state = None
 
+
+# BLACKJACK:
 
 class Card:
     def __init__(self, suit, number):
@@ -289,49 +301,182 @@ class Game21(StateMachine):
         raise EndSession(message)
 
 
+# FOOD OR NOT:
+
+class FoodOrNot(StateMachine):
+    FOOD = [
+        (True, '{🍇}{виноград}'),
+        (True, '{🍉}{арбуз}'),
+        (True, '{🍊}{мандарин}'),
+        (True, '{🍌}{банан}'),
+        (True, '{🍍}{ананас}'),
+        (True, '{🥭}{манго}'),
+        (True, '{🍎}{яблоко}'),
+        (True, '{🍐}{грушу}'),
+        (True, '{🍑}{персик}'),
+        (True, '{🍒}{вишню}'),
+        (True, '{🍓}{клубнику}'),
+        (True, '{🫐}{чернику}'),
+        (True, '{🥝}{киви}'),
+        (True, '{🍅}{помидор}'),
+        (True, '{🥥}{кокос}'),
+        (True, '{🥑}{авокадо}'),
+        (True, '{🍆}{баклажан}'),
+        (True, '{🥔}{картошку}'),
+        (True, '{🌽}{кукурузу}'),
+        (True, '{🌶️}{перец}'),
+        (True, '{🥒}{огурец}'),
+        (True, '{🍞}{хлеб}'),
+        (True, '{🥐}{круассан}'),
+        (True, '{🥖}{багет}'),
+        (True, '{🧀}{сыр}'),
+        (True, '{🍕}{пиццу}'),
+        (True, '{🥪}{бутерброд}'),
+        (True, '{🍙}{онигири}'),
+        (True, '{🍚}{рис}'),
+        (True, '{🍝}{спагетти}'),
+        (True, '{🍣}{суши}'),
+        (True, '{🍨}{мороженое}'),
+        (True, '{🥧}{пирог}'),
+        (True, '{🍫}{шоколад}'),
+
+        (False, '{🕳️}{дыру}'),
+        (False, '{💣}{бомба}'),
+        (False, '{🔪}{нож}'),
+        (False, '{🧭}{компас}'),
+        (False, '{🧱}{стену}'),
+        (False, '{🛢️}{нефть}'),
+        (False, '{🧳}{чемодан}'),
+        (False, '{⏰}{будильник}'),
+        (False, '{🌡️}{градусник}'),
+        (False, '{🧨}{динамит}'),
+        (False, '{🪁}{воздушный змей}'),
+        (False, '{🖼️}{картину}'),
+        (False, '{💽}{диск}'),
+        (False, '{💾}{дискету}'),
+        (False, '{📺}{телевизор}'),
+        (False, '{📷}{фотоаппарат}'),
+        (False, '{📼}{кассету}'),
+        (False, '{🔍}{лупу}'),
+        (False, '{💡}{лампочку}'),
+        (False, '{📖}{книгу}'),
+        (False, '{📎}{скрепку}'),
+        (False, '{📏}{линейку}'),
+        (False, '{🗝️}{ключ}'),
+        (False, '{🔨}{молоток}'),
+        (False, '{🪓}{топор}'),
+        (False, '{🪚}{пила}'),
+        (False, '{🗜️}{струбцину}'),
+        (False, '{🧲}{магнит}'),
+        (False, '{🔭}{телескоп}'),
+        (False, '{🪠}{вантуз}'),
+        (False, '{🧹}{веник}'),
+        (False, '{🧽}{мочалку}'),
+    ]
+
+    def start(self):
+        self.state = 'playing'
+        self.n_correct = 0
+        self.current_test = random.choice(self.FOOD)
+        return Response(
+            'Играем в съедобно-несъед`обно!'
+            ' Отвечайте на вопрос либо "съем" либо "выброшу".'
+            '\n\n'
+            f'Первый вопрос: съели ли бы вы {self.current_test[1]}?'
+        )
+
+    @StateMachine.input({'съем'})
+    @StateMachine.input({'ем'})
+    @StateMachine.input({'да'})
+    @StateMachine.need_state('playing')
+    def eat(self):
+        if self.current_test[0]:
+            self.n_correct += 1
+            message = f'Правильно! {self.current_test[1]} можно смело кушать.'
+            self.current_test = random.choice(self.FOOD)
+            message += f' Следующий вопрос: съели ли бы вы {self.current_test[1]}?'
+            return Response(message)
+        self.state = 'dead'
+        return Response(
+            f'Нет! {self.current_test[1]} ни в коем случае нельзя есть!'
+            ' Вы отравились и умерли.'
+            '\n\n'
+            'До своей смерти вы успели правильно ответить на'
+            f' {countable(self.n_correct, "вопрос", "вопроса", "вопросов")}.'
+            ' Чтобы начать снова, {напишите}{скажите} "ожить"{,}{.} чтобы выйти'
+            ' {напишите}{скажите} "достаточно".'
+        )
+
+    @StateMachine.input({'ожить'})
+    @StateMachine.input({'жить'})
+    @StateMachine.input({'жить'})
+    @StateMachine.need_state('dead')
+    def resurrect(self):
+        return self.start()
+
+    @StateMachine.input({'выброшу'})
+    @StateMachine.input({'нет'})
+    @StateMachine.need_state('playing')
+    def throw(self):
+        if not self.current_test[0]:
+            self.n_correct += 1
+            message = f'Правильно! {self.current_test[1]} кушать нельзя.'
+            self.current_test = random.choice(self.FOOD)
+            message += f' Следующий вопрос: съели ли бы вы {self.current_test[1]}?'
+            return Response(message)
+        self.state = 'wrong'
+        return Response(
+            f'Как же так! Вы решили выбросить {self.current_test[1]}.'
+            ' А в Африке дети от голода умирают. Вы вообще знаете{}{,} как люди'
+            ' в блокаду жили?!'
+            '\n\n'
+            'До этого варварского поступка вы успели правильно ответить на'
+            f' {countable(self.n_correct, "вопрос", "вопроса", "вопросов")}.'
+            ' Чтобы начать снова, {напишите}{скажите} "извините"{,}{.} чтобы выйти'
+            ' {напишите}{скажите} "достаточно".'
+        )
+
+    @StateMachine.input({'извините'})
+    @StateMachine.need_state('wrong')
+    def apologise(self):
+        return self.start()
+
+    @StateMachine.input({'достаточно'})
+    @StateMachine.input({'выйти'})
+    def enough(self):
+        raise EndSession('Игра закончена.')
+
+# GREETER:
+
+
 class Greeter(StateMachine):
     similar = {
-        'опрос': ['тест', 'вопрос'],
-        'вездекод': ['вездеход', 'бездикод'],
-        'код': ['кот'],
-        'squad': ['сквад', 'scott']
+        'съедобно': 'съедобное'
     }
-
-    @StateMachine.input(['совсквот', 'вездеход'])
-    @StateMachine.input(['совсквот', 'везде', 'код'])
-    @StateMachine.input(['soft', 'squad', 'вездеход'])
-    @StateMachine.input(['soft', 'squad', 'везде', 'кот'])
-    def greet_good(self):
-        return Response(
-            text='Привет вездекодерам!',
-            tts='Привет вездек+одерам! <speaker audio=marusia-sounds/game-powerup-1>',
-            cards=[{'type': 'BigImage', 'image_id': 457239017}]
-        )
 
     @StateMachine.input({'очко'})
     def start_quiz(self):
-        self.state = 'help_seen'
         game = Game21()
         self.inhabit(game)
         return game.start()
 
-    @StateMachine.input()
-    @StateMachine.need_state('help_seen')
-    def greet_bad(self):
-        return 'Фу, уходи.'
+    @StateMachine.input({'съедобно'})
+    def start_foodornot(self):
+        game = FoodOrNot()
+        self.inhabit(game)
+        return game.start()
 
     @StateMachine.input()
     def greet(self):
-        self.state = 'help_seen'
         return Response(
-            text='Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
-                 ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
-                 ' Или напиши "очко" чтобы сыграть в двадцать одно.',
-            tts='Привет!! Мы команда SOFT SQUAD!!'
+            text=(
+                'Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
+                ' Выберите одну из игр: "очко" или "съедобно".'),
+            tts=(
+                'Привет!! Мы команда SOFT SQUAD!!'
                 ' <speaker audio=marusia-sounds/things-sword-1> '
                 ' <speaker audio=marusia-sounds/things-gun-1> '
-                ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!'
-                ' Или напиши "опрос" чтобы пройти опрос',
+                ' Выберите одну из игр: "^очк`о^" или "^съед`обно^".'),
         )
 
 
