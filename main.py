@@ -69,8 +69,8 @@ def to_tts(s):
 
 
 class EndSession(Exception):
-    def __init__(self, resp):
-        self.resp = resp
+    def __init__(self, *args, **kwargs):
+        self.resp = Response(*args, **kwargs)
 
 
 def is_similar(cls, a, b):
@@ -159,167 +159,134 @@ class StateMachine:
 
     def inhabit(self, state_machine):
         assert self._inhabited_by is None
+        state_machine.inhabitor = self
         self._inhabited_by = state_machine
 
     def __init__(self):
         self.state = None
 
 
-class Quiz(StateMachine):
+class Card:
+    def __init__(self, suit, number):
+        self.suit = suit
+        self.number = number
+
+    def __repr__(self):
+        tts_number = {
+            6: 'шестёрка',
+            7: 'семёрка',
+            8: 'восьмёрка',
+            9: 'девятка',
+            10: 'десятка',
+            'J': 'валет',
+            'Q': 'дама',
+            'K': 'король',
+            'A': 'туз',
+        }[self.number]
+
+        tts_suit = {
+            '♠️': 'пик',
+            '♦️': 'бубен',
+            '♣️': 'крестей',
+            '♥️': 'червей'
+        }[self.suit]
+
+        return f'{{{self.number}{self.suit}}}{{{tts_number} {tts_suit}}}'
+
+    def value(self):
+        return self.number if isinstance(self.number, int) else {
+            'J': 2,
+            'Q': 3,
+            'K': 4,
+            'A': 11
+        }[self.number]
+
+
+class Game21(StateMachine):
     similar = {
-        'конец': ['закончить', 'завершить', 'пока']
+        'ещё': ['еще'],
     }
 
+    DECK = [
+        Card(suit, number)
+        for suit in ['♠️', '♦️', '♣️', '♥️']
+        for number in list(range(6, 11)) + ['J', 'Q', 'K', 'A']
+    ]
+
     def __init__(self):
-        self.recs = ['Дизайн']
+        self.deck = self.DECK.copy()
+        random.shuffle(self.deck)
+        self.hand = []
 
-    @StateMachine.input('начать')
+    def get_card(self):
+        card = self.deck.pop()
+        self.hand.append(card)
+        return card
+
+    def hand_value(self, hand=None):
+        if hand is None:
+            hand = self.hand
+        return sum(card.value() for card in hand)
+
+    def hand_str(self, hand=None):
+        if hand is None:
+            hand = self.hand
+        return " ".join(repr(card) for card in hand)
+
     def start(self):
-        self.state = 0
-        return ('Если Вы хотите выйти из опроса до окончания,'
-                ' напишите "конец". \n\nДля ссылки на приложение{}{,} напишите "^ссылка^".'
-                ' Для картинки{}{,} напишите "^картинка^". Если либо ссылка, либо'
-                ' картинка не работают, я предлагаю ^ува`жаемому^ жюри посмотреть'
-                ' на возвращаемый {JSON}{джей ^сон^} и убедиться, что он'
-                ' полностью соответствует документации и ^примерам^, а значит'
-                ' баг либо в документации, либо в приложении. Готов обсудить'
-                ' этот вопрос лично{}{,} и буду рад, если вы сможете убедить меня'
-                ' в обратном. \n\n'
-                'Первый вопрос: что такое {middleware}{мидл вэйр}??'), [
-            'сорт яблок',
-            'линия в доте',
-            'промежуточная функция между запросом и ответом'
-        ]
-
-    @StateMachine.input('конец')
-    def end(self):
-        raise EndSession('ну пока')
-
-    @StateMachine.input('ссылка')
-    def link(self):
+        self.state = ''
         return Response(
-            'Вот!!!',
-            cards=[
-                {'type': 'MiniApp', 'url':  'https://vk.com/app7543093'},
-            ],
+            'Играем в двадцать одно!'
+            ' Чтобы взять карту, {напишите}{скажите} "Ещё!".'
+            ' Чтобы закончить брать карты, {напишите}{скажите} "Хватит!".'
+            '\n\n'
+            'К сожалению, у этого отладчика есть незадокументированная'
+            ' фича, которая автоматически закрывает его при команде "хватит".'
+            ' Чтобы сессия отладчика не рвалась, вы можете использовать'
+            ' команду "достаточно" вместо команды "хватит". Возможно,'
+            ' авторам заданий следовало бы при их составлении учесть то, как'
+            ' работает ^отладчик^, не ^считаете^?'
+            '\n\n'
+            f'В любом случае, ваша первая карта: {self.get_card()}.\n'
+            f'Количество очков: {self.hand_value()}\n\n'
+            'Ещё или хватит?'
         )
 
-    @StateMachine.input('картинка')
-    def picture(self):
-        return Response(
-            'Вот!!!',
-            cards=[
-                {'type': 'BigImage', 'image_id':  457239018},
-            ],
-        )
+    @StateMachine.input({'ещё'})
+    def pick(self):
+        assert self.hand_value() < 21
+        card = self.get_card()
+        message = f'Вы вытянули карту {card}.\n\n'
+        if self.hand_value() == 21:
+            message += 'Вы набрали ровно {21}{двадцать одно} очко и выиграли!'
+            raise EndSession(message)
+        elif self.hand_value() > 21:
+            if self.hand_value() < 25:
+                message += f'Перебор! У вас оказалось {self.hand_value()} очка.'
+            else:
+                message += f'Перебор! У вас оказалось {self.hand_value()} очков.'
+            raise EndSession(message)
+        else:
+            message += f'Ваша рука: {self.hand_str()}\n'
+            message += f'Количество очков: {self.hand_value()}\n\n'
+            message += 'Ещё или хватит?'
+            return message
 
-    @StateMachine.input('SEAWAYS')
-    @StateMachine.need_state(7)
-    def correct(self):
-        self.recs.append(rec)
-        raise EndSession(Response(
-            'Правильно!! Опрос закончен. Рекомендуем'
-            f' Вам категорию {random.choice(self.recs)}.',
-        ))
+    @StateMachine.input({'достаточно'})
+    @StateMachine.input({'хватит'})
+    def enough(self):
+        dealer_hand = []
+        while self.hand_value(dealer_hand) <= 17:
+            dealer_hand.append(self.deck.pop())
 
-    @StateMachine.input()
-    @StateMachine.need_state(7)
-    def incorrect(self):
-        raise EndSession('А вот и нет. Опрос закончен. Рекомендуем'
-                         f' Вам категорию {random.choice(self.recs)}.')
-
-
-_quiz_data = [
-    (
-        'промежуточная функция между запросом и ответом',
-        'Веб-разработка, особенно бэкэнд',
-        'что такое cv2',
-        [
-            'резюме второй версии',
-            'фреймворк для разработки игр',
-            'библиотека для компьютерного зрения'
-        ]),
-    (
-        'библиотека для компьютерного зрения',
-        'Компьютерное зрение',
-        'что такое {CORS}{корс}',
-        [
-            'курс типа как в универе',
-            'cars может',
-            'Cross-Origin Resource Sharing'
-        ]),
-    (
-        'Cross-Origin Resource Sharing',
-        'Web',
-        'что такое android',
-        [
-            'роботы такие типа',
-            'iphone',
-            'операционная система',
-        ]),
-    (
-        'операционная система',
-        'Мобильная разработка',
-        'что такое feature',
-        [
-            'ну типа не баг а фича',
-            'всё-таки баг',
-            'какой-то атрибут объекта',
-        ]),
-    (
-        'какой-то атрибут объекта',
-        'Анализ данных',
-        'что такое седловая ^точка^',
-        [
-            'ну типа садиться на неё',
-            'не знаю',
-            'стационарная точка но не экстремум',
-        ]),
-    (
-        'стационарная точка но не экстремум',
-        'Оптимизация',
-        'кто такая Маруся',
-        [
-            'моя еот',
-            'машина такая',
-            'бот',
-        ]),
-    (
-        'бот',
-        'Маруся',
-        '^какой^ читкод в {GTA Vice City}{гэ тэ ^а^ вайс сити} позволяет ездить по воде',
-        [
-            'HESOYAM',
-            'ASPIRINE',
-            'SEAWAYS'
-        ])
-]
-
-for i, (answer, rec, next_question, next_options) in enumerate(_quiz_data):
-    @StateMachine.input(answer)
-    @StateMachine.need_state(i)
-    def correct(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
-        self.recs.append(rec)
-        self.state = i + 1
-        return Response(
-            text=f'Правильно!! Следующий вопрос: {next_question}??',
-            tts=f'Правильно!! <speaker audio=marusia-sounds/game-win-1> Следующий вопрос: {to_tts(next_question)}??',
-            buttons=next_options
-        )
-
-    setattr(Quiz, f'correct{i}', correct)
-
-    @StateMachine.input()
-    @StateMachine.need_state(i)
-    def incorrect(self, i=i, rec=rec, next_question=next_question, next_options=next_options):
-        self.state = i + 1
-        return Response(
-            text=f'А вот и нет. Следующий вопрос: {next_question}??',
-            tts=f'А вот и нет. <speaker audio=marusia-sounds/game-loss-2> Следующий вопрос: {to_tts(next_question)}??',
-            buttons=next_options
-        )
-
-    setattr(Quiz, f'incorrect{i}', incorrect)
+        dealer_value = self.hand_value(dealer_hand)
+        if dealer_value > 21 or dealer_value < self.hand_value():
+            message = 'Вы выиграли!\n\n'
+        else:
+            message = 'Вы проиграли.\n\n'
+        message += f'Рука банкира: {self.hand_str(dealer_hand)}\n'
+        message += f'Количество очков банкира: {dealer_value}'
+        raise EndSession(message)
 
 
 class Greeter(StateMachine):
@@ -341,12 +308,12 @@ class Greeter(StateMachine):
             cards=[{'type': 'BigImage', 'image_id': 457239017}]
         )
 
-    @StateMachine.input(['начать', 'опрос'])
-    @StateMachine.input({'опрос'})
+    @StateMachine.input({'очко'})
     def start_quiz(self):
-        quiz = Quiz()
-        self.inhabit(quiz)
-        return quiz.start()
+        self.state = 'help_seen'
+        game = Game21()
+        self.inhabit(game)
+        return game.start()
 
     @StateMachine.input()
     @StateMachine.need_state('help_seen')
@@ -359,7 +326,7 @@ class Greeter(StateMachine):
         return Response(
             text='Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
                  ' Напиши SOFT SQUAD вездекод чтобы поздороваться с нами!!!!'
-                 ' Или напиши "опрос" чтобы пройти опрос',
+                 ' Или напиши "очко" чтобы сыграть в двадцать одно.',
             tts='Привет!! Мы команда SOFT SQUAD!!'
                 ' <speaker audio=marusia-sounds/things-sword-1> '
                 ' <speaker audio=marusia-sounds/things-gun-1> '
