@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from tetris import TetrisField
 from snake import SnakeField
+from twentyfortyeight import TwentyFourtyEightField
 
 
 logger = logging.getLogger('uvicorn.error')
@@ -578,6 +579,73 @@ class Snake(StateMachine):
         raise EndSession('Игра закончена.')
 
 
+# 2048:
+
+class TwentyFourtyEight(StateMachine):
+    similar = {
+        'налево': ['лево', 'влево'],
+        'направо': ['право', 'вправо'],
+        'вниз': ['низ'],
+        'вверх': ['верх'],
+    }
+
+    def start(self):
+        self.field = TwentyFourtyEightField()
+        message = (
+            'Играем в {2048}{двадцать сорок восемь}! Доступные команды: "налево", "направо", "вниз",'
+            ' "вверх". Значения на иконках соответствуют показателям степени двойки.\n\n'
+        )
+        return Response(
+            message + self.field.emoji(),
+            tts=message
+        )
+
+    @StateMachine.input({'налево'})
+    def left(self):
+        self.field.left()
+        ret = f'{{{self.field.emoji()}}}{{}}'
+        if self.field.loss():
+            raise EndSession(f'{ret}\n\nВы проиграли.')
+        elif self.field.win():
+            raise EndSession(f'{ret}\n\nВы выиграли!')
+        return ret
+
+    @StateMachine.input({'направо'})
+    def right(self):
+        self.field.right()
+        ret = f'{{{self.field.emoji()}}}{{}}'
+        if self.field.loss():
+            raise EndSession(f'{ret}\n\nВы проиграли.')
+        elif self.field.win():
+            raise EndSession(f'{ret}\n\nВы выиграли!')
+        return ret
+
+    @StateMachine.input({'вверх'})
+    def up(self):
+        self.field.up()
+        ret = f'{{{self.field.emoji()}}}{{}}'
+        if self.field.loss():
+            raise EndSession(f'{ret}\n\nВы проиграли.')
+        elif self.field.win():
+            raise EndSession(f'{ret}\n\nВы выиграли!')
+        return ret
+
+    @StateMachine.input({'вниз'})
+    def down(self):
+        self.field.down()
+        ret = f'{{{self.field.emoji()}}}{{}}'
+        if self.field.loss():
+            raise EndSession(f'{ret}\n\nВы проиграли.')
+        elif self.field.win():
+            raise EndSession(f'{ret}\n\nВы выиграли!')
+        return ret
+
+    @StateMachine.input({'достаточно'})
+    @StateMachine.input({'выйти'})
+    def enough(self):
+        raise EndSession('Игра закончена.')
+
+
 # GREETER:
 
 class Greeter(StateMachine):
@@ -610,17 +678,25 @@ class Greeter(StateMachine):
         self.inhabit(game)
         return game.start()
 
+    @StateMachine.input({'2048'})
+    @StateMachine.input(['два', 'ноль', 'четыре', 'восемь'])
+    @StateMachine.input(['двадцать', 'сорок', 'восемь'])
+    def start_2048(self):
+        game = TwentyFourtyEight()
+        self.inhabit(game)
+        return game.start()
+
     @StateMachine.input()
     def greet(self):
         return Response(
             text=(
                 'Привет!!!!! Мы команда SOFT SQUAD!!!!!!!!!'
-                ' Выберите одну из игр: "^очк`о^", "^съед`обно^", "тетрис" или "змейка".'),
+                ' Выберите одну из игр: "^очк`о^", "^съед`обно^", "тетрис", "змейка" или "2048".'),
             tts=(
                 'Привет!! Мы команда SOFT SQUAD!!'
                 ' <speaker audio=marusia-sounds/things-sword-1> '
                 ' <speaker audio=marusia-sounds/things-gun-1> '
-                ' Выберите одну из игр: "^очк`о^", "^съед`обно^", "тетрис" или "змейка".'),
+                ' Выберите одну из игр: "^очк`о^", "^съед`обно^", "тетрис", "змейка" или "2048".'),
         )
 
 
